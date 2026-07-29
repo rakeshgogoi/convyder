@@ -1,12 +1,13 @@
 """Throwaway CLI: capture audio from a chosen input device (e.g. BlackHole,
-fed by a Multi-Output Device during a Teams/Meet call) and stream it to the
-backend's /ws/incoming endpoint, printing live captions.
+fed by a Multi-Output Device during a Teams/Meet call), stream it to the
+backend's /ws/incoming endpoint, print live captions, and play the
+translated speech through a chosen output device (your headphones).
 
 This exists to validate the incoming pipeline against real audio before
 the Electron app is built. Requires the backend running first.
 
 Usage:
-    python scripts/capture_client.py --device blackhole
+    python scripts/capture_client.py --device blackhole --speaker AirPods
     python scripts/capture_client.py --device "MacBook Air Microphone"  # quick mic test
 
 Extra dependency not in requirements.txt (capture-only, not needed by the
@@ -27,21 +28,18 @@ CHUNK_MS = 20
 CHUNK_SAMPLES = SAMPLE_RATE_HZ * CHUNK_MS // 1000
 
 
-def find_device_index(name_substring: str) -> int:
+def find_device_index(name_substring: str, require_input: bool) -> int:
     devices = sd.query_devices()
+    key = "max_input_channels" if require_input else "max_output_channels"
     for i, d in enumerate(devices):
-        if name_substring.lower() in d["name"].lower() and d["max_input_channels"] > 0:
+        if name_substring.lower() in d["name"].lower() and d[key] > 0:
             return i
-    available = "\n".join(
-        f"  [{i}] {d['name']} (in={d['max_input_channels']})" for i, d in enumerate(devices)
-    )
-    raise SystemExit(f"No input device matching '{name_substring}'. Available:\n{available}")
+    kind = "input" if require_input else "output"
+    available = "\n".join(f"  [{i}] {d['name']} ({kind}={d[key]})" for i, d in enumerate(devices))
+    raise SystemExit(f"No {kind} device matching '{name_substring}'. Available:\n{available}")
 
 
-def print_transcript(message: str) -> None:
-    data = json.loads(message)
-    if data.get("type") != "transcript":
-        return
+def print_transcript(data: dict) -> None:
     prefix = f"[{data['segment_id']}]"
     if data["is_final"]:
         line = f"{prefix} {data['text']}"
@@ -52,9 +50,13 @@ def print_transcript(message: str) -> None:
         print(f"\r{prefix} {data['text']}", end="", flush=True)
 
 
-async def run(device_name: str, ws_url: str) -> None:
-    device_index = find_device_index(device_name)
-    print(f"Capturing from: {sd.query_devices(device_index)['name']} -> {ws_url}")
+async def run(device_name: str, speaker_name: str, ws_url: str) -> None:
+    device_index = find_device_index(device_name, require_input=True)
+    speaker_index = find_device_index(speaker_name, require_input=False)
+    print(
+        f"Capturing from: {sd.query_devices(device_index)['name']} -> {ws_url} "
+        f"-> playing to: {sd.query_devices(speaker_index)['name']}"
+    )
 
     audio_queue: "asyncio.Queue[bytes]" = asyncio.Queue()
     loop = asyncio.get_event_loop()
@@ -82,8 +84,20 @@ async def run(device_name: str, ws_url: str) -> None:
                 await ws.send(chunk)
 
         async def receiver() -> None:
+            pending_final = False
             async for message in ws:
-                print_transcript(message)
+                if isinstance(message, str):
+                    data = json.loads(message)
+                    if data.get("type") != "transcript":
+                        continue
+                    print_transcript(data)
+                    pending_final = data["is_final"]
+                    continue
+
+                if pending_final and message:
+                    audio_np = np.frombuffer(message, dtype=np.int16)
+                    sd.play(audio_np, samplerate=SAMPLE_RATE_HZ, device=speaker_index, blocking=False)
+                pending_final = False
 
         with stream:
             await asyncio.gather(sender(), receiver())
@@ -92,6 +106,7 @@ async def run(device_name: str, ws_url: str) -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", default="blackhole", help="Substring to match the input device name")
+    parser.add_argument("--speaker", default="AirPods", help="Substring to match the output device name")
     parser.add_argument("--url", default="ws://127.0.0.1:8000/ws/incoming")
     args = parser.parse_args()
-    asyncio.run(run(args.device, args.url))
+    asyncio.run(run(args.device, args.speaker, args.url))

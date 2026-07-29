@@ -7,7 +7,7 @@ be 16-bit signed PCM, mono, at SAMPLE_RATE_HZ.
 """
 import array
 import asyncio
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
 import numpy as np
 from faster_whisper import WhisperModel
@@ -31,9 +31,14 @@ class WhisperSTTProvider(STTProvider):
         device: str = "cpu",
         compute_type: str = "int8",
         language: str = "en",
+        model: Optional[WhisperModel] = None,
     ) -> None:
+        # `model` lets two directions (different `language`) share one
+        # loaded WhisperModel instead of doubling memory/load time —
+        # the model itself is multilingual; only the transcribe() call
+        # is language-pinned.
         self.language = language
-        self._model = WhisperModel(model_size, device=device, compute_type=compute_type)
+        self._model = model or WhisperModel(model_size, device=device, compute_type=compute_type)
 
     async def transcribe(self, audio: bytes, segment_id: int) -> AsyncIterator[TranscriptChunk]:
         yield TranscriptChunk(segment_id=segment_id, text="...", is_final=False)
