@@ -44,7 +44,10 @@ def print_transcript(message: str) -> None:
         return
     prefix = f"[{data['segment_id']}]"
     if data["is_final"]:
-        print(f"\r{prefix} {data['text']}" + " " * 10)
+        line = f"{prefix} {data['text']}"
+        if data.get("translated_text"):
+            line += f"  ->  {data['translated_text']}"
+        print(f"\r{line}" + " " * 10)
     else:
         print(f"\r{prefix} {data['text']}", end="", flush=True)
 

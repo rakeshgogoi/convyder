@@ -57,8 +57,18 @@ driver — integrate with these existing ones.
 - Log per-stage latency (STT time, MT time, TTS time) on every processed
   segment during development; this data drives provider selection later.
 
+## Provider decisions made so far
+- STT: local Whisper via `faster-whisper` (free, offline, no API key).
+  Model size and language configurable via `WHISPER_MODEL_SIZE` /
+  `STT_LANGUAGE` env vars.
+- MT: local Argos Translate (free, offline, no API key). Direction
+  configurable via `MT_SOURCE_LANG` / `MT_TARGET_LANG` env vars — currently
+  defaulted to EN->ES to match available test audio, not the ES->EN
+  incoming-pipeline spec above; revisit once testing with real Spanish
+  speech.
+
 ## Not yet decided / open items
-- Final STT/MT/TTS vendor choices
+- Final TTS vendor choice
 - Voice cloning approach for the outgoing pipeline
 - Feedback-loop detection strategy (preventing the outgoing pipeline's own
   synthesized voice from re-entering via loopback)

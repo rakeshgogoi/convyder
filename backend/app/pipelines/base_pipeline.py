@@ -23,16 +23,24 @@ class BasePipeline:
 
         Works around sync or async code inside the `with` block — only
         the enter/exit timestamps matter, not what happens in between.
+        Avoid this around code that yields control back to a caller
+        who does unrelated work before resuming it (e.g. an async
+        generator whose consumer does its own slow work between
+        items) — the elapsed time would wrongly include that. Use
+        `log_duration` with a manually captured start time instead.
         """
         start = time.perf_counter()
         try:
             yield
         finally:
-            duration_ms = (time.perf_counter() - start) * 1000
-            logger.info(
-                "direction=%s segment=%s stage=%s duration_ms=%.1f",
-                self.direction,
-                segment_id,
-                stage,
-                duration_ms,
-            )
+            self.log_duration(stage, segment_id, start)
+
+    def log_duration(self, stage: str, segment_id: Union[int, str], start: float) -> None:
+        duration_ms = (time.perf_counter() - start) * 1000
+        logger.info(
+            "direction=%s segment=%s stage=%s duration_ms=%.1f",
+            self.direction,
+            segment_id,
+            stage,
+            duration_ms,
+        )

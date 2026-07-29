@@ -1,23 +1,26 @@
-"""Incoming direction: meeting-audio loopback -> VAD -> STT -> transcript.
+"""Incoming direction: meeting-audio loopback -> VAD -> STT -> MT -> caption.
 
-Captions-only for now (step 1 of the build order): no MT/TTS. Multiple
+Captions-only for now (step 1 of the build order): no TTS. Multiple
 speakers are possible on this side eventually (diarization), but that's
 not needed for this scaffold.
 """
 import itertools
+import time
 
 from fastapi import WebSocket
 
 from app.audio.vad import VoiceActivityDetector
 from app.pipelines.base_pipeline import BasePipeline
+from app.providers.mt_provider import MTProvider
 from app.providers.stt_provider import STTProvider
 
 
 class IncomingPipeline(BasePipeline):
-    def __init__(self, websocket: WebSocket, stt_provider: STTProvider) -> None:
+    def __init__(self, websocket: WebSocket, stt_provider: STTProvider, mt_provider: MTProvider) -> None:
         super().__init__(direction="incoming")
         self.websocket = websocket
         self.stt_provider = stt_provider
+        self.mt_provider = mt_provider
         self.vad = VoiceActivityDetector()
         self._chunk_ids = itertools.count(1)
         self._segment_ids = itertools.count(1)
@@ -37,13 +40,23 @@ class IncomingPipeline(BasePipeline):
 
     async def _run_stt(self, segment: bytes) -> None:
         segment_id = next(self._segment_ids)
-        with self.stage_timer("stt", segment_id):
-            async for transcript in self.stt_provider.transcribe(segment, segment_id):
-                await self.websocket.send_json(
-                    {
-                        "type": "transcript",
-                        "segment_id": transcript.segment_id,
-                        "text": transcript.text,
-                        "is_final": transcript.is_final,
-                    }
-                )
+        stt_start = time.perf_counter()
+
+        async for transcript in self.stt_provider.transcribe(segment, segment_id):
+            translated_text = None
+            if transcript.is_final:
+                self.log_duration("stt", segment_id, stt_start)
+
+                mt_start = time.perf_counter()
+                translated_text = await self.mt_provider.translate(transcript.text)
+                self.log_duration("mt", segment_id, mt_start)
+
+            await self.websocket.send_json(
+                {
+                    "type": "transcript",
+                    "segment_id": transcript.segment_id,
+                    "text": transcript.text,
+                    "is_final": transcript.is_final,
+                    "translated_text": translated_text,
+                }
+            )
