@@ -7,8 +7,13 @@ This exists to validate the incoming pipeline against real audio before
 the Electron app is built. Requires the backend running first.
 
 Usage:
-    python scripts/capture_client.py --device blackhole --speaker AirPods
+    python scripts/capture_client.py --device "BlackHole 2ch" --speaker AirPods
     python scripts/capture_client.py --device "MacBook Air Microphone"  # quick mic test
+
+Note: with both BlackHole 2ch and BlackHole 16ch installed, a bare
+"blackhole" substring is ambiguous and may match the wrong one (16ch is
+the outgoing pipeline's virtual mic and has nothing routed to it for
+capture) — always specify "2ch" here.
 
 Extra dependency not in requirements.txt (capture-only, not needed by the
 backend service itself):
@@ -105,7 +110,7 @@ async def run(device_name: str, speaker_name: str, ws_url: str) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--device", default="blackhole", help="Substring to match the input device name")
+    parser.add_argument("--device", default="BlackHole 2ch", help="Substring to match the input device name")
     parser.add_argument("--speaker", default="AirPods", help="Substring to match the output device name")
     parser.add_argument("--url", default="ws://127.0.0.1:8000/ws/incoming")
     args = parser.parse_args()
