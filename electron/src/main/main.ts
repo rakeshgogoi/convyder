@@ -1,6 +1,9 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
+import { startBackend, stopBackend } from './backend-process';
+import { registerIpcHandlers } from './ipc-handlers';
+import { readConfig } from './config-store';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -8,7 +11,6 @@ if (started) {
 }
 
 const createWindow = () => {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 700,
@@ -17,7 +19,15 @@ const createWindow = () => {
     },
   });
 
-  // and load the index.html of the app.
+  registerIpcHandlers(mainWindow);
+
+  // Forwards renderer devtools console output to the main process's own
+  // stdout/log — useful for debugging the packaged app where devtools
+  // isn't open by default (see plan's packaged-app verification checks).
+  mainWindow.webContents.on('console-message', (event) => {
+    console.log(`[renderer] ${event.message}`);
+  });
+
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
   } else {
@@ -26,14 +36,14 @@ const createWindow = () => {
     );
   }
 
-  // Open the DevTools.
   mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
-app.on('ready', createWindow);
+app.on('ready', async () => {
+  createWindow();
+  const config = readConfig();
+  await startBackend(config.incoming, config.outgoing);
+});
 
 // Quit when all windows are closed, except on macOS. There, it's common
 // for applications and their menu bar to stay active until the user quits
@@ -45,12 +55,15 @@ app.on('window-all-closed', () => {
 });
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
 });
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
+let quitting = false;
+app.on('before-quit', (event) => {
+  if (quitting) return;
+  quitting = true;
+  event.preventDefault();
+  stopBackend().finally(() => app.exit(0));
+});
