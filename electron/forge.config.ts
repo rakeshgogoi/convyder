@@ -78,8 +78,14 @@ const config: ForgeConfig = {
     },
   },
   makers: [
-    new MakerSquirrel({}),
-    new MakerZIP({}, ['darwin']),
+    new MakerSquirrel({
+      setupIcon: path.join(__dirname, 'assets', 'icon.ico'),
+    }),
+    // Squirrel needs Mono+Wine to build from a non-Windows host, so it's
+    // only viable running natively on Windows. A zip fallback needs
+    // neither — same portable-folder shape as the darwin zip, useful for
+    // a quick "does it run at all" check without the installer machinery.
+    new MakerZIP({}, ['darwin', 'win32']),
     new MakerRpm({}),
     new MakerDeb({}),
   ],

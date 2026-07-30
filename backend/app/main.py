@@ -12,6 +12,7 @@ per direction (e.g. Sarvam for Indian languages, Whisper otherwise).
 """
 import logging
 import os
+import platform
 from contextlib import asynccontextmanager
 from typing import AsyncIterator, Optional
 
@@ -73,6 +74,17 @@ def _build_mt_provider(provider_name: str, source_lang: str, target_lang: str) -
     return ArgosMTProvider(source_lang=source_lang, target_lang=target_lang)
 
 
+def _build_tts_provider(target_lang: str, say_voice: str) -> TTSProvider:
+    if platform.system() == "Windows":
+        from app.providers.windows_tts_provider import WindowsTTSProvider
+
+        return WindowsTTSProvider(language_code=target_lang)
+
+    from app.providers.say_tts_provider import SayTTSProvider
+
+    return SayTTSProvider(voice=say_voice)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # All loaded once at startup, not per-connection: real providers do a
@@ -116,10 +128,12 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _incoming_tts_provider = MockTTSProvider()
         _outgoing_tts_provider = MockTTSProvider()
     else:
-        from app.providers.say_tts_provider import SayTTSProvider
-
-        _incoming_tts_provider = SayTTSProvider(voice=os.environ.get("INCOMING_TTS_VOICE", "Samantha"))
-        _outgoing_tts_provider = SayTTSProvider(voice=os.environ.get("OUTGOING_TTS_VOICE", "Monica"))
+        _incoming_tts_provider = _build_tts_provider(
+            incoming_mt_target, os.environ.get("INCOMING_TTS_VOICE", "Samantha")
+        )
+        _outgoing_tts_provider = _build_tts_provider(
+            outgoing_mt_target, os.environ.get("OUTGOING_TTS_VOICE", "Monica")
+        )
 
     yield
 

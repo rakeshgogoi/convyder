@@ -31,9 +31,19 @@ export function onSetupProgress(listener: (progress: SetupProgress) => void): ()
 
 /** Tries a few likely Python installs in order — faster-whisper/
  * ctranslate2 wheel availability lags brand-new Python releases, so
- * prefer slightly older stable versions when multiple are present. */
+ * prefer slightly older stable versions when multiple are present.
+ *
+ * Windows candidates are deliberately simpler than macOS/Linux: the
+ * `python3.11`-style versioned names are a Homebrew/Linux-distro
+ * convention, not how python.org's Windows installer sets things up —
+ * that installer's "Add python.exe to PATH" option (checked by default)
+ * puts a single `python` on PATH instead. We can't pick a specific minor
+ * version as precisely as a result; a pip install failure from an
+ * incompatible version would surface as its own reportable error. */
 function findSystemPython(): Promise<string | null> {
-  const candidates = ['python3.11', 'python3.10', 'python3.12', 'python3.9', 'python3'];
+  const candidates = process.platform === 'win32'
+    ? ['python', 'python3']
+    : ['python3.11', 'python3.10', 'python3.12', 'python3.9', 'python3'];
   return new Promise((resolve) => {
     const tryNext = (i: number) => {
       if (i >= candidates.length) {
@@ -91,7 +101,9 @@ export async function runSetup(): Promise<boolean> {
   }
 
   emitProgress({ phase: 'installing-dependencies' });
-  const pipBin = path.join(BACKEND_VENV_DIR, 'bin', 'pip');
+  const pipBin = process.platform === 'win32'
+    ? path.join(BACKEND_VENV_DIR, 'Scripts', 'pip.exe')
+    : path.join(BACKEND_VENV_DIR, 'bin', 'pip');
   const requirementsPath = path.join(BACKEND_SOURCE_DIR, 'requirements.txt');
   const pipExit = await runCommand(pipBin, ['install', '-r', requirementsPath], (line) => {
     emitProgress({ phase: 'installing-dependencies', line });

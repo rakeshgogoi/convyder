@@ -28,7 +28,9 @@ export const BACKEND_VENV_DIR = app.isPackaged
   ? path.join(app.getPath('userData'), 'backend-venv')
   : path.join(BACKEND_SOURCE_DIR, '.venv');
 
-export const PYTHON_BIN = path.join(BACKEND_VENV_DIR, 'bin', 'python');
+export const PYTHON_BIN = process.platform === 'win32'
+  ? path.join(BACKEND_VENV_DIR, 'Scripts', 'python.exe')
+  : path.join(BACKEND_VENV_DIR, 'bin', 'python');
 
 export function isBackendSetUp(): boolean {
   return fs.existsSync(PYTHON_BIN);
@@ -72,16 +74,37 @@ async function checkHealth(timeoutMs = 1500): Promise<boolean> {
   }
 }
 
+/** netstat's column layout (Proto, Local Address, Foreign Address, State,
+ * PID) rather than lsof's -t flag — Windows has no lsof. Matches on the
+ * port suffix of the local-address column so it works for both the IPv4
+ * (0.0.0.0:8000) and IPv6 ([::]:8000) forms netstat can report. */
+function findWindowsPidsOnPort(port: number): string[] {
+  const output = execSync('netstat -ano -p TCP', { encoding: 'utf-8' });
+  const pids = new Set<string>();
+  for (const line of output.split('\n')) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length < 5) continue;
+    const [proto, localAddress, , state, pid] = parts;
+    if (proto !== 'TCP' || state !== 'LISTENING') continue;
+    if (localAddress.split(':').pop() === String(port) && /^\d+$/.test(pid)) {
+      pids.add(pid);
+    }
+  }
+  return [...pids];
+}
+
 /** Handles the one real orphan scenario for a personal app: the previous
  * launch was force-quit and left uvicorn bound to the port. We can't tell
  * whether a listener on 8000 is our own stale process or something else,
  * so just clear it and spawn fresh rather than guessing. */
 function killExistingOnPort(port: number): void {
   try {
-    const pids = execSync(`lsof -i :${port} -sTCP:LISTEN -t`, { encoding: 'utf-8' })
-      .split('\n')
-      .map((s) => s.trim())
-      .filter(Boolean);
+    const pids = process.platform === 'win32'
+      ? findWindowsPidsOnPort(port)
+      : execSync(`lsof -i :${port} -sTCP:LISTEN -t`, { encoding: 'utf-8' })
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean);
     for (const pid of pids) {
       try {
         process.kill(Number(pid), 'SIGTERM');
@@ -90,7 +113,8 @@ function killExistingOnPort(port: number): void {
       }
     }
   } catch {
-    // lsof exits non-zero when nothing is listening on the port — expected
+    // lsof exits non-zero (or netstat finds nothing matching) when
+    // nothing is listening on the port — expected
   }
 }
 
