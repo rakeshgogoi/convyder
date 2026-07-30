@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { AppConfig } from '@convyder/shared/config-types';
 import type { BackendStatus } from '../main/backend-process';
+import type { SetupProgress } from '../main/setup-process';
 
 const convyderApi = {
   config: {
@@ -14,6 +15,15 @@ const convyderApi = {
       const listener = (_event: IpcRendererEvent, status: BackendStatus) => callback(status);
       ipcRenderer.on('backend:status', listener);
       return () => ipcRenderer.removeListener('backend:status', listener);
+    },
+  },
+  setup: {
+    check: (): Promise<boolean> => ipcRenderer.invoke('setup:check'),
+    run: (): Promise<boolean> => ipcRenderer.invoke('setup:run'),
+    onProgress: (callback: (progress: SetupProgress) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, progress: SetupProgress) => callback(progress);
+      ipcRenderer.on('setup:progress', listener);
+      return () => ipcRenderer.removeListener('setup:progress', listener);
     },
   },
   say: {

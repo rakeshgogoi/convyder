@@ -181,19 +181,24 @@ export function SettingsPanel({ onDone }: SettingsPanelProps) {
         </div>
 
         <div className="settings-section">
-          <div className="settings-section-title">Sarvam AI (optional)</div>
-          <div className="settings-section-desc">
-            Better quality than the free default for Indian languages (Hindi, Bengali, Tamil, Telugu, Kannada).
-            Needs an API key from sarvam.ai — stored locally on this Mac, sent only to Sarvam&apos;s API.
-          </div>
-          <div className="field">
-            <label>API key</label>
-            <input
-              type="password"
-              value={config.sarvamApiKey ?? ''}
-              onChange={(e) => setConfig({ ...config, sarvamApiKey: e.target.value || null })}
-              placeholder="Leave blank to use free Whisper for all languages"
-            />
+          <div className="settings-section-title">Built with</div>
+          <div className="tech-stack">
+            <div className="tech-stack-item">
+              <span className="tech-stack-label">Speech-to-text</span>
+              <span className="tech-stack-value">Whisper (on-device) · Sarvam AI for Indian languages</span>
+            </div>
+            <div className="tech-stack-item">
+              <span className="tech-stack-label">Translation</span>
+              <span className="tech-stack-value">Argos Translate (on-device) · Sarvam Mayura for Indian languages</span>
+            </div>
+            <div className="tech-stack-item">
+              <span className="tech-stack-label">Text-to-speech</span>
+              <span className="tech-stack-value">macOS built-in voices</span>
+            </div>
+            <div className="tech-stack-item">
+              <span className="tech-stack-label">App</span>
+              <span className="tech-stack-value">Electron + FastAPI</span>
+            </div>
           </div>
         </div>
 
@@ -201,6 +206,10 @@ export function SettingsPanel({ onDone }: SettingsPanelProps) {
           <button className="btn btn-primary" onClick={save} disabled={saving}>
             {saving ? 'Applying — restarting backend…' : 'Save & Apply'}
           </button>
+        </div>
+
+        <div className="settings-footer">
+          Designed &amp; developed by <span className="brand-credit">Coding Ryder</span>
         </div>
       </div>
     </div>

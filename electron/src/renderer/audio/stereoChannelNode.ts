@@ -1,5 +1,6 @@
-import workletUrl from './stereo-channel-worklet?url';
+import workletUrl from './stereo-channel-worklet.js?url';
 import { SAMPLE_RATE_HZ } from '@convyder/shared/audio-constants';
+import { loadWorkletModule } from './loadWorkletModule';
 
 export interface StereoChannelPlayer {
   pushLeft: (pcm16: ArrayBuffer) => void;
@@ -21,7 +22,7 @@ function pcm16ToFloat32(pcm: ArrayBuffer): Float32Array {
  * translated audio arriving later over the wire — see stereo-channel-worklet.ts. */
 export async function createStereoChannelPlayer(deviceId: string): Promise<StereoChannelPlayer> {
   const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE_HZ });
-  await audioContext.audioWorklet.addModule(workletUrl);
+  await loadWorkletModule(audioContext, workletUrl);
 
   const node = new AudioWorkletNode(audioContext, 'stereo-channel-player', {
     numberOfInputs: 0,

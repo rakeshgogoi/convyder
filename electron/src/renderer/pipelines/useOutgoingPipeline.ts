@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { OutgoingSynthesizedAudioMessage } from '@convyder/shared/wire-types';
 import { startCapture, type CaptureController } from '../audio/captureController';
 import { createPlaybackController, type PlaybackController } from '../audio/playbackController';
@@ -33,17 +33,37 @@ export function useOutgoingPipeline() {
   const playbackRef = useRef<PlaybackController | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const stop = useCallback(() => {
+  // Shared by stop() and the defensive teardown at the top of start() —
+  // without that second call site, calling start() again while a previous
+  // session's capture/WS/playback are still live (e.g. a double-click, or
+  // a stop() that didn't fully settle before the next start()) would just
+  // overwrite these refs, orphaning the old session with no way for the
+  // UI to ever reach it again — it'd keep streaming the mic and playing
+  // synthesized audio forever, invisible to the "Idle" status shown.
+  const cleanup = useCallback(() => {
     captureRef.current?.stop();
     captureRef.current = null;
     playbackRef.current?.stop();
     playbackRef.current = null;
     wsRef.current?.close();
     wsRef.current = null;
-    setStatus('idle');
   }, []);
 
+  const stop = useCallback(() => {
+    cleanup();
+    setStatus('idle');
+  }, [cleanup]);
+
+  // MainScreen and SettingsPanel are mutually-exclusive render branches in
+  // App.tsx (switching to Settings unmounts MainScreen entirely) — without
+  // this, opening Settings while a session is running orphans it: the
+  // component (and its "Running" status) disappears, but the actual
+  // WebSocket/mic capture/playback keep going forever with nothing left
+  // that can ever call stop() on them again.
+  useEffect(() => cleanup, [cleanup]);
+
   const start = useCallback(async (micDeviceId: string, virtualMicOutDeviceId: string) => {
+    cleanup();
     setStatus('starting');
     setError(null);
 
@@ -94,7 +114,7 @@ export function useOutgoingPipeline() {
       setStatus('error');
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [stop]);
+  }, [cleanup, stop]);
 
   return { status, error, captions, start, stop };
 }

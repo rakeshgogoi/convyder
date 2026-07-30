@@ -10,23 +10,28 @@
  * anti-aliased resample — no different in spirit from the Python VAD's
  * RMS-threshold stub elsewhere in this codebase: adequate for speech/STT
  * input, not audiophile-grade.
+ *
+ * Plain JS (not TS): this file is loaded via `?url` and executed verbatim
+ * in the AudioWorkletGlobalScope, not run through Vite's bundler/transform
+ * — see loadWorkletModule.ts. So it can't use TS-only syntax or import
+ * from `shared/`; SAMPLE_RATE_HZ/CHUNK_SAMPLES are duplicated below,
+ * kept in sync manually with shared/src/audio-constants.ts.
  */
-import { SAMPLE_RATE_HZ, CHUNK_SAMPLES } from '@convyder/shared/audio-constants';
+const SAMPLE_RATE_HZ = 16000;
+const CHUNK_SAMPLES = 320;
 
 class PcmDownsamplerProcessor extends AudioWorkletProcessor {
-  private readonly outputBuffer = new Int16Array(CHUNK_SAMPLES);
-  private writeIndex = 0;
-  private readonly resampleRatio: number;
-  private resampleAccumulator = 0;
-
   constructor() {
     super();
+    this.outputBuffer = new Int16Array(CHUNK_SAMPLES);
+    this.writeIndex = 0;
+    this.resampleAccumulator = 0;
     // `sampleRate` is a global in AudioWorkletGlobalScope (the context's
     // native rate, e.g. 48000).
     this.resampleRatio = sampleRate / SAMPLE_RATE_HZ;
   }
 
-  process(inputs: Float32Array[][]): boolean {
+  process(inputs) {
     const input = inputs[0];
     if (!input || input.length === 0) return true;
 

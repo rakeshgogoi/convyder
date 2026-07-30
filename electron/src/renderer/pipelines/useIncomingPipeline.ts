@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { IncomingTranscriptMessage } from '@convyder/shared/wire-types';
 import { startCapture, type CaptureController } from '../audio/captureController';
 import { createStereoChannelPlayer, type StereoChannelPlayer } from '../audio/stereoChannelNode';
@@ -34,17 +34,33 @@ export function useIncomingPipeline() {
   const playbackRef = useRef<StereoChannelPlayer | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
-  const stop = useCallback(() => {
+  // Shared by stop() and the defensive teardown at the top of start() — see
+  // useOutgoingPipeline.ts for why: without it, a start() called while a
+  // previous session's capture/WS/playback are still live just overwrites
+  // these refs, orphaning the old session with no way for the UI to ever
+  // reach it again.
+  const cleanup = useCallback(() => {
     captureRef.current?.stop();
     captureRef.current = null;
     playbackRef.current?.stop();
     playbackRef.current = null;
     wsRef.current?.close();
     wsRef.current = null;
-    setStatus('idle');
   }, []);
 
+  const stop = useCallback(() => {
+    cleanup();
+    setStatus('idle');
+  }, [cleanup]);
+
+  // See useOutgoingPipeline.ts — MainScreen unmounts entirely when
+  // switching to Settings, so without this, opening Settings while a
+  // session is running orphans it (the component disappears, but the
+  // real WebSocket/mic capture/playback keep running forever).
+  useEffect(() => cleanup, [cleanup]);
+
   const start = useCallback(async (meetingAudioInDeviceId: string, headphoneDeviceId: string) => {
+    cleanup();
     setStatus('starting');
     setError(null);
 
@@ -103,7 +119,7 @@ export function useIncomingPipeline() {
       setStatus('error');
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, [stop]);
+  }, [cleanup, stop]);
 
   return { status, error, captions, start, stop };
 }

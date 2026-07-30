@@ -90,3 +90,6 @@ typings/
 
 # Electron-Forge
 out/
+
+# Backend source staged for packaging (see forge.config.ts)
+.backend-staging/

@@ -1,7 +1,9 @@
-// Loaded as a Vite build asset (hashed filename) rather than bundled into
-// the renderer chunk — AudioWorklet modules run in their own global scope
-// and must be addModule()'d from a real fetchable URL.
-import workletUrl from './pcm-downsampler-worklet?url';
+// Loaded as a Vite build asset (hashed filename, copied verbatim — see
+// pcm-downsampler-worklet.js's own comment for why it's plain JS, not TS).
+// AudioWorklet modules run in their own global scope and must be
+// addModule()'d from a real fetchable URL.
+import workletUrl from './pcm-downsampler-worklet.js?url';
+import { loadWorkletModule } from './loadWorkletModule';
 
 export interface CaptureController {
   stop: () => void;
@@ -24,7 +26,7 @@ export async function startCapture(
   });
 
   const audioContext = new AudioContext();
-  await audioContext.audioWorklet.addModule(workletUrl);
+  await loadWorkletModule(audioContext, workletUrl);
 
   const source = audioContext.createMediaStreamSource(stream);
   const workletNode = new AudioWorkletNode(audioContext, 'pcm-downsampler');

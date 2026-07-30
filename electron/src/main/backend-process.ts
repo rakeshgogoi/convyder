@@ -1,11 +1,14 @@
 /**
  * Spawns/health-checks/kills the backend's uvicorn process.
  *
- * v1 explicitly does not bundle Python (see plan) — this is a personal,
- * single-machine app, so we spawn the backend/.venv this project already
- * has rather than shipping a frozen Python runtime inside the packaged app.
- * That means PROJECT_ROOT below is a real dependency: the app only works
- * if this project folder stays on this Mac at this path.
+ * We don't bundle a frozen Python runtime (PyInstaller-freezing
+ * faster-whisper/ctranslate2/argostranslate is real engineering risk for
+ * uncertain payoff — see plan notes). Instead: the backend *source* ships
+ * inside the packaged app (read-only, under process.resourcesPath — see
+ * forge.config.ts's packageAfterCopy hook), and the Python venv itself is
+ * built on first run into userData (writable, per-install) by the setup
+ * flow in setup-process.ts. In dev mode both source and venv are just the
+ * real backend/ directory, unchanged from before.
  */
 import { spawn, execSync, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import fs from 'node:fs';
@@ -17,12 +20,19 @@ import { findLanguageOption } from '@convyder/shared/languages';
 const BACKEND_PORT = 8000;
 const HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/health`;
 
-const PROJECT_ROOT = app.isPackaged
-  ? '/Users/rakeshgogoi/Documents/My Projects/convyder'
-  : path.join(__dirname, '../../..');
+export const BACKEND_SOURCE_DIR = app.isPackaged
+  ? path.join(process.resourcesPath, 'backend')
+  : path.join(__dirname, '../../../backend');
 
-const BACKEND_DIR = path.join(PROJECT_ROOT, 'backend');
-const PYTHON_BIN = path.join(BACKEND_DIR, '.venv/bin/python');
+export const BACKEND_VENV_DIR = app.isPackaged
+  ? path.join(app.getPath('userData'), 'backend-venv')
+  : path.join(BACKEND_SOURCE_DIR, '.venv');
+
+export const PYTHON_BIN = path.join(BACKEND_VENV_DIR, 'bin', 'python');
+
+export function isBackendSetUp(): boolean {
+  return fs.existsSync(PYTHON_BIN);
+}
 
 export type BackendStatus =
   | { status: 'starting' }
@@ -138,8 +148,8 @@ function buildDirectionEnv(
 export async function startBackend(config: AppConfig): Promise<void> {
   emitStatus({ status: 'starting' });
 
-  if (!fs.existsSync(PYTHON_BIN)) {
-    const detail = `Backend venv not found at ${PYTHON_BIN}. Set it up per backend/CLAUDE.md first.`;
+  if (!isBackendSetUp()) {
+    const detail = `Backend venv not found at ${PYTHON_BIN}. Run first-time setup.`;
     emitStatus({ status: 'error', detail });
     return;
   }
@@ -163,8 +173,18 @@ export async function startBackend(config: AppConfig): Promise<void> {
     PYTHON_BIN,
     ['-m', 'uvicorn', 'app.main:app', '--port', String(BACKEND_PORT)],
     {
-      cwd: BACKEND_DIR,
-      env: { ...process.env, ...directionEnv },
+      cwd: BACKEND_SOURCE_DIR,
+      env: {
+        ...process.env,
+        ...directionEnv,
+        // faster-whisper's ctranslate2 and argostranslate's stanza->torch
+        // each statically link their own copy of OpenMP — macOS x86_64
+        // wheels abort the process ("OMP: Error #15... already
+        // initialized") the moment a single process loads both. Confirmed
+        // reproducing on an x64 build; arm64 wheels don't hit this. This
+        // is the standard, widely-used workaround for that exact conflict.
+        KMP_DUPLICATE_LIB_OK: 'TRUE',
+      },
     },
   );
 
@@ -180,12 +200,45 @@ export async function startBackend(config: AppConfig): Promise<void> {
     }
   });
 
+  const startedProcess = backendProcess;
   const healthy = await waitForHealth();
   if (healthy) {
     emitStatus({ status: 'ready' });
   } else {
-    emitStatus({ status: 'error', detail: `Backend did not become healthy in time. See ${logFile}` });
+    // Don't give up permanently here — a slow cold start (first-ever
+    // venv, downloading the Whisper model — can take minutes on a slow
+    // connection) can easily exceed this initial timeout while the
+    // backend is still fine and about to come up. Observed live: the
+    // process kept starting successfully seconds after this timeout,
+    // but the UI was stuck showing a permanent false "error" with no
+    // way to recover short of a manual restart.
+    emitStatus({
+      status: 'error',
+      detail: 'Still starting (first run can take a few minutes to download models)…',
+    });
+    continuePollingInBackground(startedProcess, logFile);
   }
+}
+
+function continuePollingInBackground(
+  expectedProcess: ChildProcessWithoutNullStreams | null,
+  logFile: string,
+): void {
+  (async () => {
+    for (let i = 0; i < 120; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      // A newer startBackend/stopBackend call has since taken over —
+      // let its own status reporting own the outcome instead of ours.
+      if (backendProcess !== expectedProcess) return;
+      if (await checkHealth()) {
+        emitStatus({ status: 'ready' });
+        return;
+      }
+    }
+    if (backendProcess === expectedProcess) {
+      emitStatus({ status: 'error', detail: `Backend did not become healthy after an extended wait. See ${logFile}` });
+    }
+  })();
 }
 
 export async function stopBackend(): Promise<void> {

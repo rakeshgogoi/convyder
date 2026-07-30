@@ -1,0 +1,27 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <rect x="0" y="0" width="1024" height="1024" rx="224" fill="#000000"/>
+  <path d="
+    M 302 222
+    L 722 222
+    Q 802 222 802 302
+    L 802 602
+    Q 802 682 722 682
+    L 400 682
+    L 300 782
+    Q 288 794 274 786
+    Q 262 778 264 762
+    L 282 682
+    L 302 682
+    Q 222 682 222 602
+    L 222 302
+    Q 222 222 302 222
+    Z
+  " fill="#d4af37"/>
+  <g fill="#000000">
+    <rect x="317" y="392" width="46" height="120" rx="23"/>
+    <rect x="403" y="332" width="46" height="240" rx="23"/>
+    <rect x="489" y="292" width="46" height="320" rx="23"/>
+    <rect x="575" y="332" width="46" height="240" rx="23"/>
+    <rect x="661" y="392" width="46" height="120" rx="23"/>
+  </g>
+</svg>

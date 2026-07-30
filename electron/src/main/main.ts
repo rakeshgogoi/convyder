@@ -1,7 +1,7 @@
 import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
-import { startBackend, stopBackend } from './backend-process';
+import { isBackendSetUp, startBackend, stopBackend } from './backend-process';
 import { registerIpcHandlers } from './ipc-handlers';
 import { readConfig } from './config-store';
 
@@ -9,6 +9,15 @@ import { readConfig } from './config-store';
 if (started) {
   app.quit();
 }
+
+// Convyder never stores anything through Chromium's own cookie/localStorage
+// encryption (all persisted state — config, API key — goes through our own
+// plain config.json, not Electron's session storage), so skip the real
+// macOS Keychain for it. Without this, every launch of an ad-hoc-signed
+// build prompts for "<AppName> Safe Storage" keychain access, since the
+// ACL is tied to the app's code signature and we have no stable Developer
+// ID identity for it to persist against.
+app.commandLine.appendSwitch('use-mock-keychain');
 
 const createWindow = () => {
   const mainWindow = new BrowserWindow({
@@ -36,13 +45,20 @@ const createWindow = () => {
     );
   }
 
-  mainWindow.webContents.openDevTools();
+  if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    mainWindow.webContents.openDevTools();
+  }
 };
 
 app.on('ready', async () => {
   createWindow();
-  const config = readConfig();
-  await startBackend(config);
+  // On a fresh install (e.g. a friend's Mac) there's no venv yet — skip
+  // starting the backend until the renderer's SetupScreen runs setup and
+  // explicitly calls backend:restart. Avoids a confusing "backend error"
+  // status appearing before the user has even seen the setup flow.
+  if (isBackendSetUp()) {
+    await startBackend(readConfig());
+  }
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common
