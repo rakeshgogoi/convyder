@@ -15,7 +15,12 @@ export interface LanguageOption {
 }
 
 export const LANGUAGE_OPTIONS: LanguageOption[] = [
-  { code: 'en', label: 'English', sayVoice: 'Samantha', sarvamLanguageCode: 'en-IN' },
+  // No sarvamLanguageCode for English on purpose, even though Sarvam
+  // supports en-IN: Whisper already handles general English well (proven
+  // extensively), and auto-routing English through Sarvam the moment any
+  // Sarvam key is configured (e.g. just for Hindi output) would silently
+  // send audio off-device and cost money for no quality benefit.
+  { code: 'en', label: 'English', sayVoice: 'Samantha' },
   { code: 'es', label: 'Spanish', sayVoice: 'Monica' },
   { code: 'fr', label: 'French', sayVoice: 'Thomas' },
   { code: 'de', label: 'German', sayVoice: 'Anna' },

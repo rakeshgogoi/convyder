@@ -1,5 +1,13 @@
+import { useState } from 'react';
 import { MainScreen } from './main-screen/MainScreen';
+import { SettingsPanel } from './settings/SettingsPanel';
 
 export function App() {
-  return <MainScreen />;
+  const [view, setView] = useState<'main' | 'settings'>('main');
+
+  if (view === 'settings') {
+    return <SettingsPanel onDone={() => setView('main')} />;
+  }
+
+  return <MainScreen onOpenSettings={() => setView('settings')} />;
 }
