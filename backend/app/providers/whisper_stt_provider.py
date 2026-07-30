@@ -52,5 +52,16 @@ class WhisperSTTProvider(STTProvider):
             audio_np,
             language=self.language,
             beam_size=1,
+            # Our own VAD is a simple RMS-threshold stub that lets some
+            # non-speech (background noise, trailing silence) through as
+            # "segments" — Whisper then hallucinates plausible-sounding
+            # text for audio that isn't actually speech. vad_filter skips
+            # non-speech regions within the segment (faster-whisper's own
+            # documented fix for this); condition_on_previous_text=False
+            # avoids repetition-loop hallucinations; the no_speech_prob
+            # check is a last-resort filter for whatever gets through.
+            vad_filter=True,
+            condition_on_previous_text=False,
         )
-        return " ".join(segment.text.strip() for segment in segments).strip()
+        kept = [s.text.strip() for s in segments if s.no_speech_prob < 0.6 and s.text.strip()]
+        return " ".join(kept).strip()
