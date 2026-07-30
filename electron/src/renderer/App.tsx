@@ -1,12 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAudioDevices } from './audio/useAudioDevices';
 import { startCapture, type CaptureController } from './audio/captureController';
+import { createPlaybackController, type PlaybackController } from './audio/playbackController';
 
 export function App() {
   const { devices, permissionGranted, error, requestPermission } = useAudioDevices();
   const [micDeviceId, setMicDeviceId] = useState('');
+  const [speakerDeviceId, setSpeakerDeviceId] = useState('');
   const [log, setLog] = useState<string[]>([]);
   const captureRef = useRef<CaptureController | null>(null);
+  const playbackRef = useRef<PlaybackController | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const chunkCountRef = useRef(0);
 
@@ -22,14 +25,20 @@ export function App() {
         devices.find((d) => d.kind === 'audioinput' && d.label);
       if (preferred) setMicDeviceId(preferred.deviceId);
     }
-  }, [devices, micDeviceId]);
+    if (!speakerDeviceId) {
+      const preferred =
+        devices.find((d) => d.kind === 'audiooutput' && d.label.includes('BlackHole 16ch')) ??
+        devices.find((d) => d.kind === 'audiooutput' && d.label);
+      if (preferred) setSpeakerDeviceId(preferred.deviceId);
+    }
+  }, [devices, micDeviceId, speakerDeviceId]);
 
   useEffect(() => {
-    if (micDeviceId && !captureRef.current) {
+    if (micDeviceId && speakerDeviceId && !captureRef.current) {
       startTest();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [micDeviceId]);
+  }, [micDeviceId, speakerDeviceId]);
 
   const appendLog = (line: string) => {
     console.log(line);
@@ -49,7 +58,11 @@ export function App() {
     }
     appendLog('[backend] ready');
 
+    playbackRef.current = await createPlaybackController(speakerDeviceId);
+    appendLog(`[playback] controller ready for device ${speakerDeviceId}`);
+
     const ws = new WebSocket('ws://127.0.0.1:8000/ws/outgoing');
+    ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
     chunkCountRef.current = 0;
 
@@ -60,7 +73,9 @@ export function App() {
       if (typeof event.data === 'string') {
         appendLog(`[ws] json: ${event.data}`);
       } else {
-        appendLog(`[ws] binary: ${event.data.size ?? event.data.byteLength} bytes`);
+        const buf = event.data as ArrayBuffer;
+        appendLog(`[ws] binary: ${buf.byteLength} bytes`);
+        playbackRef.current?.play(buf);
       }
     };
 
@@ -82,6 +97,8 @@ export function App() {
   const stopTest = () => {
     captureRef.current?.stop();
     captureRef.current = null;
+    playbackRef.current?.stop();
+    playbackRef.current = null;
     wsRef.current?.close();
     wsRef.current = null;
   };
