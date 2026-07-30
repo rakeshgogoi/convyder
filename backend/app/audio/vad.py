@@ -27,10 +27,19 @@ class VoiceActivityDetector:
         silence_threshold: float = 500.0,
         silence_chunks_to_close: int = 8,
         min_segment_bytes: int = 3200,
+        max_segment_bytes: int = 384000,  # ~12s @ 16kHz mono 16-bit
     ) -> None:
         self.silence_threshold = silence_threshold
         self.silence_chunks_to_close = silence_chunks_to_close
         self.min_segment_bytes = min_segment_bytes
+        # With no cap, closely-spaced sentences (short pauses that never
+        # trip silence_chunks_to_close) accumulate into one ever-growing
+        # segment. Observed live: STT (Sarvam) hallucinated a runaway
+        # repetition loop on an unusually long segment. Force-flushing at
+        # a bounded length keeps segments in the range STT models are
+        # actually built for (Sarvam's own sync REST docs cap at 30s) and
+        # keeps latency bounded for long/run-on speech.
+        self.max_segment_bytes = max_segment_bytes
         self._buffer = bytearray()
         self._in_speech = False
         self._trailing_silence_chunks = 0
@@ -47,6 +56,8 @@ class VoiceActivityDetector:
             self._in_speech = True
             self._trailing_silence_chunks = 0
             self._buffer.extend(chunk)
+            if len(self._buffer) >= self.max_segment_bytes:
+                return self._flush()
             return None
 
         if not self._in_speech:

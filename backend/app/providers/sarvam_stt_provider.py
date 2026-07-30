@@ -17,6 +17,7 @@ from typing import AsyncIterator
 import requests
 
 from app.providers.stt_provider import STTProvider, TranscriptChunk
+from app.providers.text_utils import collapse_repetition_loops
 
 SARVAM_STT_URL = "https://api.sarvam.ai/speech-to-text"
 SAMPLE_RATE_HZ = 16000
@@ -70,4 +71,5 @@ class SarvamSTTProvider(STTProvider):
             timeout=15,
         )
         response.raise_for_status()
-        return (response.json().get("transcript") or "").strip()
+        text = (response.json().get("transcript") or "").strip()
+        return collapse_repetition_loops(text)

@@ -13,6 +13,7 @@ import numpy as np
 from faster_whisper import WhisperModel
 
 from app.providers.stt_provider import STTProvider, TranscriptChunk
+from app.providers.text_utils import collapse_repetition_loops
 
 SAMPLE_RATE_HZ = 16000
 
@@ -64,4 +65,4 @@ class WhisperSTTProvider(STTProvider):
             condition_on_previous_text=False,
         )
         kept = [s.text.strip() for s in segments if s.no_speech_prob < 0.6 and s.text.strip()]
-        return " ".join(kept).strip()
+        return collapse_repetition_loops(" ".join(kept).strip())
