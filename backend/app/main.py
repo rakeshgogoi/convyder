@@ -51,6 +51,28 @@ def _build_stt_provider(provider_name: str, language: str, shared_whisper_model)
     return WhisperSTTProvider(model=shared_whisper_model, language=language)
 
 
+def _build_mt_provider(provider_name: str, source_lang: str, target_lang: str) -> MTProvider:
+    if provider_name == "mock":
+        return MockMTProvider()
+
+    if provider_name == "sarvam":
+        from app.providers.sarvam_mt_provider import SarvamMTProvider
+        from app.providers.sarvam_stt_provider import TO_SARVAM_LANGUAGE_CODE
+
+        api_key = os.environ.get("SARVAM_API_KEY")
+        if not api_key:
+            raise RuntimeError("SARVAM_API_KEY is required when *_MT_PROVIDER=sarvam")
+        return SarvamMTProvider(
+            api_key=api_key,
+            source_lang=TO_SARVAM_LANGUAGE_CODE.get(source_lang, f"{source_lang}-IN"),
+            target_lang=TO_SARVAM_LANGUAGE_CODE.get(target_lang, f"{target_lang}-IN"),
+        )
+
+    from app.providers.argos_mt_provider import ArgosMTProvider
+
+    return ArgosMTProvider(source_lang=source_lang, target_lang=target_lang)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # All loaded once at startup, not per-connection: real providers do a
@@ -79,21 +101,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     _incoming_stt_provider = _build_stt_provider(incoming_stt_provider_name, incoming_stt_language, shared_whisper_model)
     _outgoing_stt_provider = _build_stt_provider(outgoing_stt_provider_name, outgoing_stt_language, shared_whisper_model)
 
-    mt_provider_name = os.environ.get("MT_PROVIDER", "argos")
-    if mt_provider_name == "mock":
-        _incoming_mt_provider = MockMTProvider()
-        _outgoing_mt_provider = MockMTProvider()
-    else:
-        from app.providers.argos_mt_provider import ArgosMTProvider
+    incoming_mt_source = os.environ.get("INCOMING_MT_SOURCE_LANG", "es")
+    incoming_mt_target = os.environ.get("INCOMING_MT_TARGET_LANG", "en")
+    outgoing_mt_source = os.environ.get("OUTGOING_MT_SOURCE_LANG", "en")
+    outgoing_mt_target = os.environ.get("OUTGOING_MT_TARGET_LANG", "es")
+    incoming_mt_provider_name = os.environ.get("INCOMING_MT_PROVIDER", os.environ.get("MT_PROVIDER", "argos"))
+    outgoing_mt_provider_name = os.environ.get("OUTGOING_MT_PROVIDER", os.environ.get("MT_PROVIDER", "argos"))
 
-        _incoming_mt_provider = ArgosMTProvider(
-            source_lang=os.environ.get("INCOMING_MT_SOURCE_LANG", "es"),
-            target_lang=os.environ.get("INCOMING_MT_TARGET_LANG", "en"),
-        )
-        _outgoing_mt_provider = ArgosMTProvider(
-            source_lang=os.environ.get("OUTGOING_MT_SOURCE_LANG", "en"),
-            target_lang=os.environ.get("OUTGOING_MT_TARGET_LANG", "es"),
-        )
+    _incoming_mt_provider = _build_mt_provider(incoming_mt_provider_name, incoming_mt_source, incoming_mt_target)
+    _outgoing_mt_provider = _build_mt_provider(outgoing_mt_provider_name, outgoing_mt_source, outgoing_mt_target)
 
     tts_provider_name = os.environ.get("TTS_PROVIDER", "say")
     if tts_provider_name == "mock":

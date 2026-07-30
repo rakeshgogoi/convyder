@@ -96,10 +96,20 @@ function backendLogPath(): string {
   return path.join(app.getPath('userData'), 'logs', 'backend.log');
 }
 
+/** English plus any language we've mapped a Sarvam code for (see
+ * shared/src/languages.ts) — Mayura (Sarvam's translation model)
+ * translates between English and Indian languages (and between Indian
+ * languages themselves per their docs' examples), not general non-Indian
+ * pairs like Spanish/French, so both sides of a direction need to clear
+ * this before routing MT to Sarvam. */
+function isSarvamMtSupported(code: string): boolean {
+  return code === 'en' || Boolean(findLanguageOption(code)?.sarvamLanguageCode);
+}
+
 /** Turns a direction's language *codes* into the env vars the backend
- * actually reads — provider choice (Sarvam vs Whisper), voice, etc. This
- * is the one place that needs to know about LANGUAGE_OPTIONS/Sarvam so
- * config-types.ts and the UI can stay in terms of plain language codes. */
+ * actually reads — provider choice (Sarvam vs Whisper/Argos), voice, etc.
+ * This is the one place that needs to know about LANGUAGE_OPTIONS/Sarvam
+ * so config-types.ts and the UI can stay in terms of plain language codes. */
 function buildDirectionEnv(
   prefix: 'INCOMING' | 'OUTGOING',
   direction: DirectionLanguageConfig,
@@ -107,13 +117,20 @@ function buildDirectionEnv(
 ): Record<string, string> {
   const spoken = findLanguageOption(direction.spokenLanguageCode);
   const target = findLanguageOption(direction.targetLanguageCode);
-  const useSarvam = Boolean(spoken?.sarvamLanguageCode && sarvamApiKey);
+  const useSarvamStt = Boolean(spoken?.sarvamLanguageCode && sarvamApiKey);
+  const useSarvamMt = Boolean(
+    sarvamApiKey &&
+      (spoken?.sarvamLanguageCode || target?.sarvamLanguageCode) &&
+      isSarvamMtSupported(direction.spokenLanguageCode) &&
+      isSarvamMtSupported(direction.targetLanguageCode),
+  );
 
   return {
     [`${prefix}_STT_LANGUAGE`]: direction.spokenLanguageCode,
-    [`${prefix}_STT_PROVIDER`]: useSarvam ? 'sarvam' : 'whisper',
+    [`${prefix}_STT_PROVIDER`]: useSarvamStt ? 'sarvam' : 'whisper',
     [`${prefix}_MT_SOURCE_LANG`]: direction.spokenLanguageCode,
     [`${prefix}_MT_TARGET_LANG`]: direction.targetLanguageCode,
+    [`${prefix}_MT_PROVIDER`]: useSarvamMt ? 'sarvam' : 'argos',
     [`${prefix}_TTS_VOICE`]: target?.sayVoice ?? 'Samantha',
   };
 }
