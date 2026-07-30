@@ -25,7 +25,18 @@ function pcm16ToFloat32(pcm: ArrayBuffer): Float32Array {
 }
 
 export async function createPlaybackController(deviceId: string): Promise<PlaybackController> {
-  const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE_HZ });
+  // Deliberately NOT forcing { sampleRate: SAMPLE_RATE_HZ } here — running
+  // the context itself at an unusual 16kHz rate while also routing to a
+  // *named* (non-default) output device via setSinkId() is a real trouble
+  // spot on some Chromium/macOS combinations (silent output, no error at
+  // all). We don't need it: createBuffer() below still declares each
+  // buffer's own 16kHz rate, and the Web Audio API resamples correctly
+  // against whatever rate the context actually runs at regardless.
+  const audioContext = new AudioContext();
+  // Belt-and-suspenders: a context isn't guaranteed to start 'running'
+  // in every environment, and a suspended context schedules playback with
+  // no error at all — silent for the user, invisible to us.
+  await audioContext.resume();
   const destination = audioContext.createMediaStreamDestination();
 
   const audioEl = new Audio();

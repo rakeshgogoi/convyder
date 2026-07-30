@@ -22,6 +22,9 @@ function pcm16ToFloat32(pcm: ArrayBuffer): Float32Array {
  * translated audio arriving later over the wire — see stereo-channel-worklet.ts. */
 export async function createStereoChannelPlayer(deviceId: string): Promise<StereoChannelPlayer> {
   const audioContext = new AudioContext({ sampleRate: SAMPLE_RATE_HZ });
+  // Belt-and-suspenders, see playbackController.ts — a suspended context
+  // schedules playback with no error at all, silent with no visible sign.
+  await audioContext.resume();
   await loadWorkletModule(audioContext, workletUrl);
 
   const node = new AudioWorkletNode(audioContext, 'stereo-channel-player', {
