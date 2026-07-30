@@ -33,6 +33,16 @@ export async function createPlaybackController(deviceId: string): Promise<Playba
   await audioEl.setSinkId(deviceId);
   await audioEl.play();
 
+  // Segments arrive in the order they were spoken (the backend processes
+  // each one fully — STT->MT->TTS->send — before starting the next, and
+  // WebSocket preserves message order), but their arrival *times* aren't
+  // evenly spaced: a later segment's round-trip can finish while an
+  // earlier segment's clip is still playing. Scheduling each clip to
+  // start no earlier than when the previous one ends (rather than
+  // `source.start()` with no argument, which means "now") keeps playback
+  // linear instead of overlapping.
+  let nextStartTime = 0;
+
   function play(pcm: ArrayBuffer): void {
     if (pcm.byteLength === 0) return;
     const float32 = pcm16ToFloat32(pcm);
@@ -41,7 +51,10 @@ export async function createPlaybackController(deviceId: string): Promise<Playba
     const source = audioContext.createBufferSource();
     source.buffer = buffer;
     source.connect(destination);
-    source.start();
+
+    const startAt = Math.max(audioContext.currentTime, nextStartTime);
+    source.start(startAt);
+    nextStartTime = startAt + buffer.duration;
   }
 
   function stop(): void {
