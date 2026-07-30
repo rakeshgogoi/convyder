@@ -25,7 +25,18 @@ class VoiceActivityDetector:
     def __init__(
         self,
         silence_threshold: float = 500.0,
-        silence_chunks_to_close: int = 8,
+        # 20ms/chunk, so 25 chunks = 500ms of trailing silence before a
+        # segment is considered "done". The previous value (8 chunks =
+        # 160ms) was far shorter than a normal mid-sentence pause — a
+        # breath, a moment to think, a gap between words — so VAD kept
+        # chopping continuous speech into disconnected fragments each too
+        # short/unclear for STT to transcribe, silently: empty transcript
+        # -> empty translation -> TTS skipped. Confirmed live: a backend
+        # log dominated by near-instant STT calls (~70-120ms, consistent
+        # with tiny fragments) producing empty text, mixed with rare
+        # longer STT calls (~2s) where a short isolated word happened to
+        # have no internal pause to trip this early.
+        silence_chunks_to_close: int = 25,
         min_segment_bytes: int = 3200,
         max_segment_bytes: int = 384000,  # ~12s @ 16kHz mono 16-bit
     ) -> None:
