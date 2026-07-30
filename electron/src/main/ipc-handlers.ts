@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import { ipcMain, type BrowserWindow } from 'electron';
 import type { AppConfig } from '@convyder/shared/config-types';
 import { readConfig, writeConfig } from './config-store';
-import { getBackendStatus, onBackendStatusChange } from './backend-process';
+import { getBackendStatus, onBackendStatusChange, restartBackend } from './backend-process';
 
 function listSayVoices(): Promise<string[]> {
   return new Promise((resolve) => {
@@ -32,6 +32,11 @@ export function registerIpcHandlers(mainWindow: BrowserWindow): void {
   });
 
   ipcMain.handle('backend:get-status', () => getBackendStatus());
+
+  ipcMain.handle('backend:restart', async () => {
+    await restartBackend(readConfig());
+    return getBackendStatus();
+  });
 
   ipcMain.handle('say:list-voices', () => listSayVoices());
 

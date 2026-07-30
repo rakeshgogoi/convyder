@@ -11,7 +11,8 @@ import { spawn, execSync, type ChildProcessWithoutNullStreams } from 'node:child
 import fs from 'node:fs';
 import path from 'node:path';
 import { app } from 'electron';
-import type { LanguageConfig } from '@convyder/shared/config-types';
+import type { AppConfig, DirectionLanguageConfig } from '@convyder/shared/config-types';
+import { findLanguageOption } from '@convyder/shared/languages';
 
 const BACKEND_PORT = 8000;
 const HEALTH_URL = `http://127.0.0.1:${BACKEND_PORT}/health`;
@@ -95,7 +96,29 @@ function backendLogPath(): string {
   return path.join(app.getPath('userData'), 'logs', 'backend.log');
 }
 
-export async function startBackend(incoming: LanguageConfig, outgoing: LanguageConfig): Promise<void> {
+/** Turns a direction's language *codes* into the env vars the backend
+ * actually reads — provider choice (Sarvam vs Whisper), voice, etc. This
+ * is the one place that needs to know about LANGUAGE_OPTIONS/Sarvam so
+ * config-types.ts and the UI can stay in terms of plain language codes. */
+function buildDirectionEnv(
+  prefix: 'INCOMING' | 'OUTGOING',
+  direction: DirectionLanguageConfig,
+  sarvamApiKey: string | null,
+): Record<string, string> {
+  const spoken = findLanguageOption(direction.spokenLanguageCode);
+  const target = findLanguageOption(direction.targetLanguageCode);
+  const useSarvam = Boolean(spoken?.sarvamLanguageCode && sarvamApiKey);
+
+  return {
+    [`${prefix}_STT_LANGUAGE`]: direction.spokenLanguageCode,
+    [`${prefix}_STT_PROVIDER`]: useSarvam ? 'sarvam' : 'whisper',
+    [`${prefix}_MT_SOURCE_LANG`]: direction.spokenLanguageCode,
+    [`${prefix}_MT_TARGET_LANG`]: direction.targetLanguageCode,
+    [`${prefix}_TTS_VOICE`]: target?.sayVoice ?? 'Samantha',
+  };
+}
+
+export async function startBackend(config: AppConfig): Promise<void> {
   emitStatus({ status: 'starting' });
 
   if (!fs.existsSync(PYTHON_BIN)) {
@@ -111,22 +134,20 @@ export async function startBackend(incoming: LanguageConfig, outgoing: LanguageC
   fs.mkdirSync(path.dirname(logFile), { recursive: true });
   const logStream = fs.createWriteStream(logFile, { flags: 'a' });
 
+  const directionEnv: Record<string, string> = {
+    ...buildDirectionEnv('INCOMING', config.incoming, config.sarvamApiKey),
+    ...buildDirectionEnv('OUTGOING', config.outgoing, config.sarvamApiKey),
+  };
+  if (config.sarvamApiKey) {
+    directionEnv.SARVAM_API_KEY = config.sarvamApiKey;
+  }
+
   backendProcess = spawn(
     PYTHON_BIN,
     ['-m', 'uvicorn', 'app.main:app', '--port', String(BACKEND_PORT)],
     {
       cwd: BACKEND_DIR,
-      env: {
-        ...process.env,
-        INCOMING_STT_LANGUAGE: incoming.sttLanguage,
-        INCOMING_MT_SOURCE_LANG: incoming.mtSourceLang,
-        INCOMING_MT_TARGET_LANG: incoming.mtTargetLang,
-        INCOMING_TTS_VOICE: incoming.ttsVoice,
-        OUTGOING_STT_LANGUAGE: outgoing.sttLanguage,
-        OUTGOING_MT_SOURCE_LANG: outgoing.mtSourceLang,
-        OUTGOING_MT_TARGET_LANG: outgoing.mtTargetLang,
-        OUTGOING_TTS_VOICE: outgoing.ttsVoice,
-      },
+      env: { ...process.env, ...directionEnv },
     },
   );
 
@@ -166,4 +187,12 @@ export async function stopBackend(): Promise<void> {
     }
   }
   backendProcess = null;
+}
+
+/** Used when language/provider settings change — the backend only reads
+ * these from env vars at process startup, so applying new ones means a
+ * full restart (a few seconds to reload Whisper/Argos). */
+export async function restartBackend(config: AppConfig): Promise<void> {
+  await stopBackend();
+  await startBackend(config);
 }

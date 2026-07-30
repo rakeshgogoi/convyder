@@ -42,7 +42,7 @@ const createWindow = () => {
 app.on('ready', async () => {
   createWindow();
   const config = readConfig();
-  await startBackend(config.incoming, config.outgoing);
+  await startBackend(config);
 });
 
 // Quit when all windows are closed, except on macOS. There, it's common

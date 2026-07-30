@@ -9,6 +9,7 @@ const convyderApi = {
   },
   backend: {
     getStatus: (): Promise<BackendStatus> => ipcRenderer.invoke('backend:get-status'),
+    restart: (): Promise<BackendStatus> => ipcRenderer.invoke('backend:restart'),
     onStatusChange: (callback: (status: BackendStatus) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, status: BackendStatus) => callback(status);
       ipcRenderer.on('backend:status', listener);

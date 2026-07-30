@@ -1,12 +1,15 @@
-// Persisted app config shape — written by the DeviceSetupWizard, read by
+// Persisted app config shape — written by the Settings panel, read by
 // MainScreen, round-tripped through the preload IPC bridge (see
-// electron/src/preload/index.ts).
+// electron/src/preload/index.ts). Kept minimal: language *codes* only —
+// backend-process.ts derives the concrete STT provider/voice/env vars
+// from these plus LANGUAGE_OPTIONS at spawn time, so this file doesn't
+// need to know about `say` voices or Sarvam.
 
-export interface LanguageConfig {
-  sttLanguage: string; // e.g. "en", "es", "hi" — matches Whisper language codes
-  mtSourceLang: string;
-  mtTargetLang: string;
-  ttsVoice: string; // macOS `say` voice name, e.g. "Monica", "Lekha", "Samantha"
+export interface DirectionLanguageConfig {
+  /** The language being spoken/transcribed (STT + MT source). */
+  spokenLanguageCode: string;
+  /** The language it's translated into (MT target + TTS voice). */
+  targetLanguageCode: string;
 }
 
 export interface AppConfig {
@@ -21,8 +24,11 @@ export interface AppConfig {
   /** Virtual mic device the meeting app selects as its Microphone (e.g. BlackHole 16ch) — outgoing pipeline's playback target. */
   virtualMicOutDeviceId: string | null;
 
-  incoming: LanguageConfig;
-  outgoing: LanguageConfig;
+  incoming: DirectionLanguageConfig;
+  outgoing: DirectionLanguageConfig;
+
+  /** Optional — enables Sarvam STT for Indian languages instead of Whisper. Stored locally, sent only to api.sarvam.ai. */
+  sarvamApiKey: string | null;
 }
 
 export const DEFAULT_APP_CONFIG: AppConfig = {
@@ -31,16 +37,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   meetingAudioInDeviceId: null,
   headphoneDeviceId: null,
   virtualMicOutDeviceId: null,
-  incoming: {
-    sttLanguage: 'es',
-    mtSourceLang: 'es',
-    mtTargetLang: 'en',
-    ttsVoice: 'Samantha',
-  },
-  outgoing: {
-    sttLanguage: 'en',
-    mtSourceLang: 'en',
-    mtTargetLang: 'es',
-    ttsVoice: 'Monica',
-  },
+  incoming: { spokenLanguageCode: 'es', targetLanguageCode: 'en' },
+  outgoing: { spokenLanguageCode: 'en', targetLanguageCode: 'es' },
+  sarvamApiKey: null,
 };

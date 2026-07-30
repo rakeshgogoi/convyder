@@ -5,10 +5,10 @@ Incoming pipeline (captions + translated speech) and outgoing pipeline
 CLAUDE.md build order steps 1-2. Diarization, voice cloning, and the
 Electron app come later.
 
-Incoming is ES->EN (hear meeting participants in English) and outgoing is
-EN->ES (participants hear you in Spanish) — genuinely different
-directions, so each gets its own STT/MT/TTS provider instances, all
-configurable via env vars.
+Incoming and outgoing are genuinely different directions with
+independent language settings, so each gets its own STT/MT/TTS provider
+instances, all configurable via env vars — including STT provider choice
+per direction (e.g. Sarvam for Indian languages, Whisper otherwise).
 """
 import logging
 import os
@@ -33,6 +33,24 @@ _outgoing_mt_provider: Optional[MTProvider] = None
 _outgoing_tts_provider: Optional[TTSProvider] = None
 
 
+def _build_stt_provider(provider_name: str, language: str, shared_whisper_model) -> STTProvider:
+    if provider_name == "mock":
+        return MockSTTProvider()
+
+    if provider_name == "sarvam":
+        from app.providers.sarvam_stt_provider import SarvamSTTProvider, TO_SARVAM_LANGUAGE_CODE
+
+        api_key = os.environ.get("SARVAM_API_KEY")
+        if not api_key:
+            raise RuntimeError("SARVAM_API_KEY is required when *_STT_PROVIDER=sarvam")
+        sarvam_language = TO_SARVAM_LANGUAGE_CODE.get(language, f"{language}-IN")
+        return SarvamSTTProvider(api_key=api_key, language_code=sarvam_language)
+
+    from app.providers.whisper_stt_provider import WhisperSTTProvider
+
+    return WhisperSTTProvider(model=shared_whisper_model, language=language)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     # All loaded once at startup, not per-connection: real providers do a
@@ -41,26 +59,25 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     global _incoming_stt_provider, _incoming_mt_provider, _incoming_tts_provider
     global _outgoing_stt_provider, _outgoing_mt_provider, _outgoing_tts_provider
 
-    stt_provider_name = os.environ.get("STT_PROVIDER", "whisper")
-    if stt_provider_name == "mock":
-        _incoming_stt_provider = MockSTTProvider()
-        _outgoing_stt_provider = MockSTTProvider()
-    else:
+    incoming_stt_language = os.environ.get("INCOMING_STT_LANGUAGE", "es")
+    outgoing_stt_language = os.environ.get("OUTGOING_STT_LANGUAGE", "en")
+    incoming_stt_provider_name = os.environ.get("INCOMING_STT_PROVIDER", "whisper")
+    outgoing_stt_provider_name = os.environ.get("OUTGOING_STT_PROVIDER", "whisper")
+
+    # One Whisper model shared by both directions when at least one needs
+    # it (it's multilingual; only the per-call `language` differs) — avoids
+    # loading it at all if both directions use a different provider (e.g.
+    # both on Sarvam).
+    shared_whisper_model = None
+    if "whisper" in (incoming_stt_provider_name, outgoing_stt_provider_name):
         from faster_whisper import WhisperModel
 
-        from app.providers.whisper_stt_provider import WhisperSTTProvider
-
-        # One model shared by both directions (it's multilingual; only the
-        # per-call `language` differs) to avoid loading it twice.
-        shared_model = WhisperModel(
+        shared_whisper_model = WhisperModel(
             os.environ.get("WHISPER_MODEL_SIZE", "base"), device="cpu", compute_type="int8"
         )
-        _incoming_stt_provider = WhisperSTTProvider(
-            model=shared_model, language=os.environ.get("INCOMING_STT_LANGUAGE", "es")
-        )
-        _outgoing_stt_provider = WhisperSTTProvider(
-            model=shared_model, language=os.environ.get("OUTGOING_STT_LANGUAGE", "en")
-        )
+
+    _incoming_stt_provider = _build_stt_provider(incoming_stt_provider_name, incoming_stt_language, shared_whisper_model)
+    _outgoing_stt_provider = _build_stt_provider(outgoing_stt_provider_name, outgoing_stt_language, shared_whisper_model)
 
     mt_provider_name = os.environ.get("MT_PROVIDER", "argos")
     if mt_provider_name == "mock":
