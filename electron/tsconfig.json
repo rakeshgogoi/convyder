@@ -12,6 +12,7 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "jsx": "react-jsx",
+    "types": ["vite/client", "audioworklet"],
     "paths": {
       "@convyder/shared/*": ["../shared/src/*"]
     }
