@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useAudioDevices } from './audio/useAudioDevices';
 import { startCapture, type CaptureController } from './audio/captureController';
-import { createPlaybackController, type PlaybackController } from './audio/playbackController';
+import { createStereoChannelPlayer, type StereoChannelPlayer } from './audio/stereoChannelNode';
 
 export function App() {
   const { devices, permissionGranted, error, requestPermission } = useAudioDevices();
@@ -9,7 +9,7 @@ export function App() {
   const [speakerDeviceId, setSpeakerDeviceId] = useState('');
   const [log, setLog] = useState<string[]>([]);
   const captureRef = useRef<CaptureController | null>(null);
-  const playbackRef = useRef<PlaybackController | null>(null);
+  const playbackRef = useRef<StereoChannelPlayer | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const chunkCountRef = useRef(0);
 
@@ -58,10 +58,10 @@ export function App() {
     }
     appendLog('[backend] ready');
 
-    playbackRef.current = await createPlaybackController(speakerDeviceId);
-    appendLog(`[playback] controller ready for device ${speakerDeviceId}`);
+    playbackRef.current = await createStereoChannelPlayer(speakerDeviceId);
+    appendLog(`[playback] stereo controller ready for device ${speakerDeviceId}`);
 
-    const ws = new WebSocket('ws://127.0.0.1:8000/ws/outgoing');
+    const ws = new WebSocket('ws://127.0.0.1:8000/ws/incoming');
     ws.binaryType = 'arraybuffer';
     wsRef.current = ws;
     chunkCountRef.current = 0;
@@ -74,8 +74,8 @@ export function App() {
         appendLog(`[ws] json: ${event.data}`);
       } else {
         const buf = event.data as ArrayBuffer;
-        appendLog(`[ws] binary: ${buf.byteLength} bytes`);
-        playbackRef.current?.play(buf);
+        appendLog(`[ws] binary (translated): ${buf.byteLength} bytes`);
+        playbackRef.current?.pushRight(buf);
       }
     };
 
@@ -85,9 +85,10 @@ export function App() {
 
     captureRef.current = await startCapture(micDeviceId, (chunk) => {
       chunkCountRef.current += 1;
-      if (chunkCountRef.current % 25 === 0) {
+      if (chunkCountRef.current % 50 === 0) {
         appendLog(`[capture] sent ${chunkCountRef.current} chunks, last size=${chunk.byteLength} bytes`);
       }
+      playbackRef.current?.pushLeft(chunk);
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(chunk);
       }
@@ -105,25 +106,12 @@ export function App() {
 
   return (
     <div style={{ fontFamily: 'sans-serif', padding: 24 }}>
-      <h1>Convyder — capture path test</h1>
+      <h1>Convyder — incoming stereo-split test</h1>
       <p>permissionGranted={String(permissionGranted)} error={error ?? 'none'}</p>
-
-      <label>
-        Mic device:{' '}
-        <select value={micDeviceId} onChange={(e) => setMicDeviceId(e.target.value)}>
-          {devices
-            .filter((d) => d.kind === 'audioinput')
-            .map((d) => (
-              <option key={d.deviceId} value={d.deviceId}>
-                {d.label || d.deviceId}
-              </option>
-            ))}
-        </select>
-      </label>
 
       <div style={{ marginTop: 12 }}>
         <button onClick={startTest} disabled={!micDeviceId}>
-          Start capture -&gt; /ws/outgoing
+          Start capture -&gt; /ws/incoming
         </button>{' '}
         <button onClick={stopTest}>Stop</button>
       </div>
