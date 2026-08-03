@@ -10,7 +10,17 @@ function configPath(): string {
 export function readConfig(): AppConfig {
   try {
     const raw = fs.readFileSync(configPath(), 'utf-8');
-    return { ...DEFAULT_APP_CONFIG, ...JSON.parse(raw) };
+    const saved = JSON.parse(raw);
+    // A plain top-level spread would silently drop new fields added to
+    // `incoming`/`outgoing` (e.g. voiceGender) for anyone with a config
+    // saved before that field existed — the saved nested object would
+    // fully replace the default rather than fill in the gap.
+    return {
+      ...DEFAULT_APP_CONFIG,
+      ...saved,
+      incoming: { ...DEFAULT_APP_CONFIG.incoming, ...saved.incoming },
+      outgoing: { ...DEFAULT_APP_CONFIG.outgoing, ...saved.outgoing },
+    };
   } catch {
     return DEFAULT_APP_CONFIG;
   }

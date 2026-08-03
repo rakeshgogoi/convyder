@@ -328,6 +328,12 @@ select {
   gap: 12px;
 }
 
+.field-row-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr auto;
+  gap: 12px;
+}
+
 .field-hint {
   font-size: 11px;
   color: var(--color-text-tertiary);

@@ -10,6 +10,11 @@ export interface DirectionLanguageConfig {
   spokenLanguageCode: string;
   /** The language it's translated into (MT target + TTS voice). */
   targetLanguageCode: string;
+  /** Which voice gender to speak the translated text in. Not every
+   * language has a distinct installed voice for both — see
+   * LanguageOption.sayVoiceMale in languages.ts — in which case this is
+   * best-effort and silently falls back to whichever voice exists. */
+  voiceGender: 'male' | 'female';
 }
 
 export interface AppConfig {
@@ -37,7 +42,7 @@ export const DEFAULT_APP_CONFIG: AppConfig = {
   meetingAudioInDeviceId: null,
   headphoneDeviceId: null,
   virtualMicOutDeviceId: null,
-  incoming: { spokenLanguageCode: 'es', targetLanguageCode: 'en' },
-  outgoing: { spokenLanguageCode: 'en', targetLanguageCode: 'es' },
+  incoming: { spokenLanguageCode: 'es', targetLanguageCode: 'en', voiceGender: 'female' },
+  outgoing: { spokenLanguageCode: 'en', targetLanguageCode: 'es', voiceGender: 'female' },
   sarvamApiKey: null,
 };

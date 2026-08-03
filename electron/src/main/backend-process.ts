@@ -159,13 +159,24 @@ function buildDirectionEnv(
       isSarvamMtSupported(direction.targetLanguageCode),
   );
 
+  // Male isn't always available (see LanguageOption's sayVoiceMale comment
+  // in languages.ts) — silently fall back to female rather than passing
+  // `say` a voice name that isn't installed.
+  const wantsMale = direction.voiceGender === 'male';
+  const sayVoice = (wantsMale && target?.sayVoiceMale) || target?.sayVoiceFemale || 'Samantha';
+
   return {
     [`${prefix}_STT_LANGUAGE`]: direction.spokenLanguageCode,
     [`${prefix}_STT_PROVIDER`]: useSarvamStt ? 'sarvam' : 'whisper',
     [`${prefix}_MT_SOURCE_LANG`]: direction.spokenLanguageCode,
     [`${prefix}_MT_TARGET_LANG`]: direction.targetLanguageCode,
     [`${prefix}_MT_PROVIDER`]: useSarvamMt ? 'sarvam' : 'argos',
-    [`${prefix}_TTS_VOICE`]: target?.sayVoice ?? 'Samantha',
+    [`${prefix}_TTS_VOICE`]: sayVoice,
+    // WindowsTTSProvider picks the installed voice by language+gender at
+    // runtime instead (SAPI voice names aren't consistent enough across
+    // Windows installs to hardcode like macOS's `say` set — see
+    // windows_tts_provider.py), so it needs the gender directly.
+    [`${prefix}_TTS_GENDER`]: direction.voiceGender,
   };
 }
 

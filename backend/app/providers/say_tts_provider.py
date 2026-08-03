@@ -28,11 +28,24 @@ class SayTTSProvider(TTSProvider):
             aiff_path = os.path.join(tmp_dir, "out.aiff")
             wav_path = os.path.join(tmp_dir, "out.wav")
 
-            subprocess.run(
-                ["say", "-v", self.voice, "-o", aiff_path, text],
-                check=True,
-                capture_output=True,
-            )
+            try:
+                subprocess.run(
+                    ["say", "-v", self.voice, "-o", aiff_path, text],
+                    check=True,
+                    capture_output=True,
+                )
+            except subprocess.CalledProcessError:
+                # The requested voice (e.g. a male "Eddy (...)" personality
+                # voice) may not actually be downloaded on this Mac — those
+                # are on-demand installs, not guaranteed present just
+                # because the OS/language supports them. Retry with no -v
+                # flag (say's own configured system default) rather than
+                # crashing the whole segment.
+                subprocess.run(
+                    ["say", "-o", aiff_path, text],
+                    check=True,
+                    capture_output=True,
+                )
             subprocess.run(
                 [
                     "afconvert",

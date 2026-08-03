@@ -74,11 +74,11 @@ def _build_mt_provider(provider_name: str, source_lang: str, target_lang: str) -
     return ArgosMTProvider(source_lang=source_lang, target_lang=target_lang)
 
 
-def _build_tts_provider(target_lang: str, say_voice: str) -> TTSProvider:
+def _build_tts_provider(target_lang: str, say_voice: str, gender: str) -> TTSProvider:
     if platform.system() == "Windows":
         from app.providers.windows_tts_provider import WindowsTTSProvider
 
-        return WindowsTTSProvider(language_code=target_lang)
+        return WindowsTTSProvider(language_code=target_lang, gender=gender)
 
     from app.providers.say_tts_provider import SayTTSProvider
 
@@ -129,10 +129,14 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         _outgoing_tts_provider = MockTTSProvider()
     else:
         _incoming_tts_provider = _build_tts_provider(
-            incoming_mt_target, os.environ.get("INCOMING_TTS_VOICE", "Samantha")
+            incoming_mt_target,
+            os.environ.get("INCOMING_TTS_VOICE", "Samantha"),
+            os.environ.get("INCOMING_TTS_GENDER", "female"),
         )
         _outgoing_tts_provider = _build_tts_provider(
-            outgoing_mt_target, os.environ.get("OUTGOING_TTS_VOICE", "Monica")
+            outgoing_mt_target,
+            os.environ.get("OUTGOING_TTS_VOICE", "Monica"),
+            os.environ.get("OUTGOING_TTS_GENDER", "female"),
         )
 
     yield

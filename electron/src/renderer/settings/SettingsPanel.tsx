@@ -54,7 +54,7 @@ export function SettingsPanel({ onDone }: SettingsPanelProps) {
 
         <div className="settings-section">
           <div className="settings-section-title">Outgoing — you speak, meeting hears translated</div>
-          <div className="field-row">
+          <div className="field-row-3">
             <div className="field">
               <label>You speak</label>
               <select
@@ -81,7 +81,18 @@ export function SettingsPanel({ onDone }: SettingsPanelProps) {
                 ))}
               </select>
             </div>
+            <div className="field">
+              <label>Voice</label>
+              <select
+                value={config.outgoing.voiceGender}
+                onChange={(e) => updateOutgoing({ voiceGender: e.target.value as 'male' | 'female' })}
+              >
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+              </select>
+            </div>
           </div>
+          <div className="field-hint">Male voice isn&apos;t available for every language yet — falls back to female.</div>
           <div className="field-row">
             <div className="field">
               <label>Your mic</label>
@@ -117,7 +128,7 @@ export function SettingsPanel({ onDone }: SettingsPanelProps) {
 
         <div className="settings-section">
           <div className="settings-section-title">Incoming — meeting speaks, you hear translated</div>
-          <div className="field-row">
+          <div className="field-row-3">
             <div className="field">
               <label>Meeting speaks</label>
               <select
@@ -144,7 +155,18 @@ export function SettingsPanel({ onDone }: SettingsPanelProps) {
                 ))}
               </select>
             </div>
+            <div className="field">
+              <label>Voice</label>
+              <select
+                value={config.incoming.voiceGender}
+                onChange={(e) => updateIncoming({ voiceGender: e.target.value as 'male' | 'female' })}
+              >
+                <option value="female">Female</option>
+                <option value="male">Male</option>
+              </select>
+            </div>
           </div>
+          <div className="field-hint">Male voice isn&apos;t available for every language yet — falls back to female.</div>
           <div className="field-row">
             <div className="field">
               <label>Meeting audio in</label>
