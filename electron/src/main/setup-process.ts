@@ -7,7 +7,7 @@
 import { spawn, execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BACKEND_SOURCE_DIR, BACKEND_VENV_DIR, isBackendSetUp } from './backend-process';
+import { BACKEND_SOURCE_DIR, BACKEND_VENV_DIR, isBackendSetUp, setupMarkerPath } from './backend-process';
 
 export type SetupProgress =
   | { phase: 'checking-python' }
@@ -113,6 +113,7 @@ export async function runSetup(): Promise<boolean> {
     return false;
   }
 
+  fs.writeFileSync(setupMarkerPath(), '');
   emitProgress({ phase: 'done' });
   return true;
 }

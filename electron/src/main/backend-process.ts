@@ -32,8 +32,20 @@ export const PYTHON_BIN = process.platform === 'win32'
   ? path.join(BACKEND_VENV_DIR, 'Scripts', 'python.exe')
   : path.join(BACKEND_VENV_DIR, 'bin', 'python');
 
+// Written by setup-process.ts only after `pip install` exits 0. Checking
+// this (rather than just PYTHON_BIN) matters because `python -m venv`
+// creates python.exe unconditionally, before pip ever runs — so a venv
+// dir existing is not evidence dependencies actually installed. Without
+// this marker, a failed pip install (e.g. an incompatible Python version,
+// a network blip) left a venv that looked "set up" to isBackendSetUp(),
+// so the *next* setup attempt short-circuited straight to "done" and
+// skipped pip entirely, shipping a backend missing uvicorn and friends.
+export function setupMarkerPath(): string {
+  return path.join(BACKEND_VENV_DIR, '.setup-complete');
+}
+
 export function isBackendSetUp(): boolean {
-  return fs.existsSync(PYTHON_BIN);
+  return fs.existsSync(PYTHON_BIN) && fs.existsSync(setupMarkerPath());
 }
 
 export type BackendStatus =
