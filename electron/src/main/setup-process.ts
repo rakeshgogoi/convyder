@@ -29,6 +29,31 @@ export function onSetupProgress(listener: (progress: SetupProgress) => void): ()
   };
 }
 
+const MIN_SUPPORTED_MINOR = 9;
+const MAX_SUPPORTED_MINOR = 12;
+
+type PythonSearchResult =
+  | { kind: 'found'; command: string }
+  // `kind: 'not-found'` with a version means we did find a `python`/
+  // `python3` on PATH, just not a supported one -- worth telling the
+  // user exactly what version they have instead of a generic "not
+  // found", since otherwise this surfaces as an opaque pip/numpy build
+  // failure deep into setup (see MIN/MAX_SUPPORTED_MINOR usage below).
+  | { kind: 'not-found'; unsupportedVersion?: string };
+
+function getVersion(command: string): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile(command, ['--version'], (error, stdout, stderr) => {
+      if (error) {
+        resolve(null);
+        return;
+      }
+      // Python < 3.4 prints to stderr; newer versions print to stdout.
+      resolve((stdout || stderr).trim());
+    });
+  });
+}
+
 /** Tries a few likely Python installs in order — faster-whisper/
  * ctranslate2 wheel availability lags brand-new Python releases, so
  * prefer slightly older stable versions when multiple are present.
@@ -38,25 +63,33 @@ export function onSetupProgress(listener: (progress: SetupProgress) => void): ()
  * convention, not how python.org's Windows installer sets things up —
  * that installer's "Add python.exe to PATH" option (checked by default)
  * puts a single `python` on PATH instead. We can't pick a specific minor
- * version as precisely as a result; a pip install failure from an
- * incompatible version would surface as its own reportable error. */
-function findSystemPython(): Promise<string | null> {
+ * version as precisely as a result, so we check the version we get back
+ * and reject anything outside the supported range explicitly instead of
+ * discovering it only when pip tries (and fails) to build numpy. */
+async function findSystemPython(): Promise<PythonSearchResult> {
   const candidates = process.platform === 'win32'
     ? ['python', 'python3']
     : ['python3.11', 'python3.10', 'python3.12', 'python3.9', 'python3'];
-  return new Promise((resolve) => {
-    const tryNext = (i: number) => {
-      if (i >= candidates.length) {
-        resolve(null);
-        return;
-      }
-      execFile(candidates[i], ['--version'], (error) => {
-        if (!error) resolve(candidates[i]);
-        else tryNext(i + 1);
-      });
-    };
-    tryNext(0);
-  });
+
+  let unsupportedVersion: string | undefined;
+
+  for (const candidate of candidates) {
+    const versionOutput = await getVersion(candidate);
+    if (!versionOutput) continue;
+
+    const match = versionOutput.match(/Python (\d+)\.(\d+)/);
+    if (!match) continue;
+
+    const [, majorStr, minorStr] = match;
+    const major = Number(majorStr);
+    const minor = Number(minorStr);
+    if (major === 3 && minor >= MIN_SUPPORTED_MINOR && minor <= MAX_SUPPORTED_MINOR) {
+      return { kind: 'found', command: candidate };
+    }
+    if (!unsupportedVersion) unsupportedVersion = versionOutput.replace(/^Python\s*/, '');
+  }
+
+  return { kind: 'not-found', unsupportedVersion };
 }
 
 function runCommand(
@@ -100,15 +133,16 @@ export async function runSetup(): Promise<boolean> {
   logStream.write(`\n=== Setup run started ${new Date().toISOString()} ===\n`);
 
   emitProgress({ phase: 'checking-python' });
-  const python = await findSystemPython();
-  if (!python) {
-    logStream.end('No Python 3 installation found on PATH.\n');
-    emitProgress({
-      phase: 'error',
-      detail: 'No Python 3 installation found. Install it from python.org (3.9-3.12 recommended), then try again.',
-    });
+  const pythonResult = await findSystemPython();
+  if (pythonResult.kind === 'not-found') {
+    const detail = pythonResult.unsupportedVersion
+      ? `Found Python ${pythonResult.unsupportedVersion}, but this needs Python 3.${MIN_SUPPORTED_MINOR}-3.${MAX_SUPPORTED_MINOR}. Install a supported version from python.org, then try again.`
+      : `No Python 3 installation found. Install it from python.org (3.${MIN_SUPPORTED_MINOR}-3.${MAX_SUPPORTED_MINOR} recommended), then try again.`;
+    logStream.end(`${detail}\n`);
+    emitProgress({ phase: 'error', detail });
     return false;
   }
+  const python = pythonResult.command;
 
   emitProgress({ phase: 'creating-venv' });
   fs.mkdirSync(path.dirname(BACKEND_VENV_DIR), { recursive: true });
