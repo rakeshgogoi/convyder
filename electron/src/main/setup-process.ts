@@ -7,7 +7,7 @@
 import { spawn, execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { BACKEND_SOURCE_DIR, BACKEND_VENV_DIR, isBackendSetUp, setupMarkerPath } from './backend-process';
+import { BACKEND_SOURCE_DIR, BACKEND_VENV_DIR, isBackendSetUp, setupMarkerPath, setupLogPath } from './backend-process';
 
 export type SetupProgress =
   | { phase: 'checking-python' }
@@ -59,19 +59,32 @@ function findSystemPython(): Promise<string | null> {
   });
 }
 
-function runCommand(command: string, args: string[], onLine?: (line: string) => void): Promise<number> {
+function runCommand(
+  command: string,
+  args: string[],
+  logStream: fs.WriteStream,
+  onLine?: (line: string) => void,
+): Promise<number> {
   return new Promise((resolve) => {
+    logStream.write(`\n$ ${command} ${args.join(' ')}\n`);
     const child = spawn(command, args);
     const handleData = (data: Buffer) => {
-      if (!onLine) return;
       for (const line of data.toString().split('\n')) {
-        if (line.trim()) onLine(line.trim());
+        if (!line.trim()) continue;
+        logStream.write(`${line.trim()}\n`);
+        onLine?.(line.trim());
       }
     };
     child.stdout.on('data', handleData);
     child.stderr.on('data', handleData);
-    child.on('exit', (code) => resolve(code ?? 1));
-    child.on('error', () => resolve(1));
+    child.on('exit', (code) => {
+      logStream.write(`(exit code ${code ?? 1})\n`);
+      resolve(code ?? 1);
+    });
+    child.on('error', (err) => {
+      logStream.write(`(failed to start: ${err.message})\n`);
+      resolve(1);
+    });
   });
 }
 
@@ -81,9 +94,15 @@ export async function runSetup(): Promise<boolean> {
     return true;
   }
 
+  const logFile = setupLogPath();
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  const logStream = fs.createWriteStream(logFile, { flags: 'a' });
+  logStream.write(`\n=== Setup run started ${new Date().toISOString()} ===\n`);
+
   emitProgress({ phase: 'checking-python' });
   const python = await findSystemPython();
   if (!python) {
+    logStream.end('No Python 3 installation found on PATH.\n');
     emitProgress({
       phase: 'error',
       detail: 'No Python 3 installation found. Install it from python.org (3.9-3.12 recommended), then try again.',
@@ -94,9 +113,10 @@ export async function runSetup(): Promise<boolean> {
   emitProgress({ phase: 'creating-venv' });
   fs.mkdirSync(path.dirname(BACKEND_VENV_DIR), { recursive: true });
 
-  const venvExit = await runCommand(python, ['-m', 'venv', BACKEND_VENV_DIR]);
+  const venvExit = await runCommand(python, ['-m', 'venv', BACKEND_VENV_DIR], logStream);
   if (venvExit !== 0) {
-    emitProgress({ phase: 'error', detail: `Failed to create the Python virtual environment (exit code ${venvExit}).` });
+    logStream.end();
+    emitProgress({ phase: 'error', detail: `Failed to create the Python virtual environment (exit code ${venvExit}). See ${logFile}` });
     return false;
   }
 
@@ -105,14 +125,16 @@ export async function runSetup(): Promise<boolean> {
     ? path.join(BACKEND_VENV_DIR, 'Scripts', 'pip.exe')
     : path.join(BACKEND_VENV_DIR, 'bin', 'pip');
   const requirementsPath = path.join(BACKEND_SOURCE_DIR, 'requirements.txt');
-  const pipExit = await runCommand(pipBin, ['install', '-r', requirementsPath], (line) => {
+  const pipExit = await runCommand(pipBin, ['install', '-r', requirementsPath], logStream, (line) => {
     emitProgress({ phase: 'installing-dependencies', line });
   });
   if (pipExit !== 0) {
-    emitProgress({ phase: 'error', detail: `Failed to install dependencies (exit code ${pipExit}).` });
+    logStream.end();
+    emitProgress({ phase: 'error', detail: `Failed to install dependencies (exit code ${pipExit}). See ${logFile}` });
     return false;
   }
 
+  logStream.end('Setup completed successfully.\n');
   fs.writeFileSync(setupMarkerPath(), '');
   emitProgress({ phase: 'done' });
   return true;

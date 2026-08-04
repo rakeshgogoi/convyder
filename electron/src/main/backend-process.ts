@@ -142,6 +142,10 @@ function backendLogPath(): string {
   return path.join(app.getPath('userData'), 'logs', 'backend.log');
 }
 
+export function setupLogPath(): string {
+  return path.join(app.getPath('userData'), 'logs', 'setup.log');
+}
+
 /** English plus any language we've mapped a Sarvam code for (see
  * shared/src/languages.ts) — Mayura (Sarvam's translation model)
  * translates between English and Indian languages (and between Indian

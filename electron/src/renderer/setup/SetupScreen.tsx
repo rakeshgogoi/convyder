@@ -6,7 +6,7 @@ interface SetupScreenProps {
 }
 
 function phaseLabel(progress: SetupProgress | null): string {
-  if (!progress) return 'Convyder needs to set up its Python backend once on this Mac.';
+  if (!progress) return 'Convyder needs to set up its Python backend once on this computer.';
   switch (progress.phase) {
     case 'checking-python':
       return 'Checking for Python…';
@@ -55,14 +55,14 @@ export function SetupScreen({ onComplete }: SetupScreenProps) {
         <h2 className="card-title">First-time setup</h2>
         <p className="card-subtitle">
           Installs speech recognition and translation dependencies. One-time only, needs Python
-          3.9-3.12 already on this Mac.
+          3.9-3.12 already on this computer.
         </p>
 
         <p style={{ fontSize: 13, marginTop: 4, color: isError ? 'var(--color-danger)' : undefined }}>
           {phaseLabel(progress)}
         </p>
 
-        {progress?.phase === 'installing-dependencies' && log.length > 0 && (
+        {(progress?.phase === 'installing-dependencies' || isError) && log.length > 0 && (
           <pre
             style={{
               fontSize: 11,
